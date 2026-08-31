@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MediKiosk WebSocket Test Client</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        #log { height: 300px; overflow-y: scroll; border: 1px solid #ccc; padding: 10px; margin-top: 10px; background: #f9f9f9; }
+        .controls { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h2>MediKiosk WebSocket Test Client</h2>
+    
+    <div>
+        <label>Room ID:</label>
+        <input type="text" id="roomInput" value="session_test-1234">
+        <label>Role:</label>
+        <select id="roleInput">
+            <option value="kiosk">Kiosk</option>
+            <option value="mobile">Mobile</option>
+            <option value="doctor">Doctor</option>
+        </select>
+        <button onclick="joinRoom()">Join Room</button>
+    </div>
+
+    <div class="controls">
+        <label>Event Type:</label>
+        <input type="text" id="eventTypeInput" value="PATIENT_ARRIVED">
+        <label>Payload (JSON):</label>
+        <input type="text" id="payloadInput" value='{"status": "waiting"}'>
+        <button onclick="broadcastEvent()">Broadcast Event</button>
+    </div>
+
+    <div id="log"></div>
+
+    <script>
+        const socket = io();
+        // Universal listener for ALL incoming server events
+socket.onAny((eventName, ...args) => {
+    // We ignore the standard 'message' events because they are already handled
+    if (eventName !== 'message') {
+        const payload = JSON.stringify(args[0]);
+        const time = new Date().toLocaleTimeString();
+        logDiv.innerHTML += `<p style="color: purple;">[${time}] &gt;&gt; RECEIVED '${eventName}': ${payload}</p>`;
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+});
+        const logDiv = document.getElementById('log');
+
+        function logMsg(msg, isOut = false) {
+            const p = document.createElement('p');
+            p.style.color = isOut ? 'blue' : 'green';
+            p.textContent = `[${new Date().toLocaleTimeString()}] ${isOut ? '<<' : '>>'} ${msg}`;
+            logDiv.appendChild(p);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        socket.on('connect', () => {
+            logMsg('Connected to server with ID: ' + socket.id);
+        });
+
+        socket.on('disconnect', () => {
+            logMsg('Disconnected from server', true);
+        });
+
+        socket.on('system_alert', (data) => {
+            logMsg('SYSTEM: ' + JSON.stringify(data));
+        });
+
+        // Listen for all potential events by tapping into socket.onAny
+        socket.onAny((eventName, ...args) => {
+            if (eventName !== 'system_alert') {
+                logMsg(`Event '${eventName}': ` + JSON.stringify(args[0]));
+            }
+        });
+
+        function joinRoom() {
+            const room_id = document.getElementById('roomInput').value;
+            const role = document.getElementById('roleInput').value;
+            socket.emit('join_room_event', { room_id, role });
+            logMsg(`Requested to join room: ${room_id} as ${role}`, true);
+        }
+
+        function broadcastEvent() {
+            const room_id = document.getElementById('roomInput').value;
+            const event_type = document.getElementById('eventTypeInput').value;
+            let payload = {};
+            try {
+                payload = JSON.parse(document.getElementById('payloadInput').value);
+            } catch(e) {
+                alert("Invalid JSON Payload");
+                return;
+            }
+            
+            const data = {
+                room_id: room_id,
+                session_id: room_id.replace('session_', ''),
+                payload: payload
+            };
+            // Emit the event universally rather than calling a specific backend function
+            socket.emit(event_type, data);
+            logMsg(`Broadcasted '${event_type}' to ${room_id}`, true);
+        }
+    </script>
+</body>
+</html>

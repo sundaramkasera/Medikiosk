@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Medical Documents</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f7f6;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+        }
+        h1 {
+            font-size: 20px;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        p {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 24px;
+        }
+        .file-upload-wrapper {
+            position: relative;
+            margin-bottom: 24px;
+        }
+        .btn {
+            background-color: #007bff;
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            transition: background-color 0.2s;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        .btn:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .file-label {
+            display: block;
+            border: 2px dashed #007bff;
+            border-radius: 8px;
+            padding: 32px 16px;
+            color: #007bff;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .file-label:hover {
+            background-color: #f0f8ff;
+        }
+        .selected-files {
+            text-align: left;
+            margin-top: 16px;
+            font-size: 14px;
+            color: #333;
+        }
+        .progress-bar-container {
+            display: none;
+            width: 100%;
+            background-color: #e9ecef;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-top: 16px;
+            height: 16px;
+        }
+        .progress-bar {
+            height: 100%;
+            background-color: #28a745;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .status-message {
+            margin-top: 16px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #28a745;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Upload Documents</h1>
+    <p>Please take photos or select images of your prescriptions and lab reports.</p>
+
+    <form id="uploadForm">
+        <div class="file-upload-wrapper">
+            <label for="fileInput" class="file-label">
+                <span id="fileLabelText">Tap to Select or Capture</span>
+            </label>
+            <input type="file" id="fileInput" accept="image/png, image/jpeg" multiple capture="environment">
+        </div>
+        
+        <div class="selected-files" id="selectedFiles"></div>
+
+        <button type="submit" id="submitBtn" class="btn" disabled>Upload Documents</button>
+
+        <div class="progress-bar-container" id="progressContainer">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <div class="status-message" id="statusMessage">Upload successful! You can now look at the kiosk.</div>
+    </form>
+</div>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const submitBtn = document.getElementById('submitBtn');
+    const selectedFilesDiv = document.getElementById('selectedFiles');
+    const uploadForm = document.getElementById('uploadForm');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressBar = document.getElementById('progressBar');
+    const statusMessage = document.getElementById('statusMessage');
+    const sessionId = "{{ session_id }}";
+
+    let resizedFiles = [];
+
+    fileInput.addEventListener('change', async (e) => {
+        const files = e.target.files;
+
+        if (files.length === 0) {
+            submitBtn.disabled = resizedFiles.length === 0;
+            return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Processing Images...';
+
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const p = document.createElement('p');
+            const currentIndex = resizedFiles.length + i + 1;
+            p.textContent = `File ${currentIndex}: ${file.name}`;
+            selectedFilesDiv.appendChild(p);
+            
+            try {
+                const resizedBlob = await resizeImage(file, 1600); // max width/height 1600px
+                resizedFiles.push(new File([resizedBlob], file.name, { type: 'image/jpeg' }));
+            } catch (err) {
+                console.error("Error resizing image", err);
+                resizedFiles.push(file); // fallback to original
+            }
+        }
+
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Upload Documents';
+    });
+
+    uploadForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        
+        if (resizedFiles.length === 0) return;
+
+        submitBtn.disabled = true;
+        fileInput.disabled = true;
+        progressContainer.style.display = 'block';
+
+        const formData = new FormData();
+        resizedFiles.forEach(file => {
+            formData.append('files', file);
+        });
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `/api/mobile/${sessionId}/upload`, true);
+
+        xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+                const percentComplete = (event.loaded / event.total) * 100;
+                progressBar.style.width = percentComplete + '%';
+            }
+        };
+
+        xhr.onload = () => {
+            if (xhr.status === 200) {
+                progressBar.style.width = '100%';
+                statusMessage.style.display = 'block';
+                statusMessage.textContent = 'Upload successful! Please look at the kiosk.';
+                statusMessage.style.color = '#28a745';
+            } else {
+                statusMessage.style.display = 'block';
+                statusMessage.textContent = 'Upload failed. Please try again.';
+                statusMessage.style.color = '#dc3545';
+                submitBtn.disabled = false;
+                fileInput.disabled = false;
+            }
+        };
+
+        xhr.onerror = () => {
+            statusMessage.style.display = 'block';
+            statusMessage.textContent = 'Network error. Please try again.';
+            statusMessage.style.color = '#dc3545';
+            submitBtn.disabled = false;
+            fileInput.disabled = false;
+        };
+
+        xhr.send(formData);
+    });
+
+    function resizeImage(file, maxSize) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (readerEvent) => {
+                const image = new Image();
+                image.onload = () => {
+                    let width = image.width;
+                    let height = image.height;
+
+                    if (width > height) {
+                        if (width > maxSize) {
+                            height *= maxSize / width;
+                            width = maxSize;
+                        }
+                    } else {
+                        if (height > maxSize) {
+                            width *= maxSize / height;
+                            height = maxSize;
+                        }
+                    }
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(image, 0, 0, width, height);
+
+                    canvas.toBlob((blob) => {
+                        resolve(blob);
+                    }, 'image/jpeg', 0.8);
+                };
+                image.onerror = (err) => reject(err);
+                image.src = readerEvent.target.result;
+            };
+            reader.onerror = (err) => reject(err);
+            reader.readAsDataURL(file);
+        });
+    }
+</script>
+
+</body>
+</html>
