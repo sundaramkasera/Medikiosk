@@ -18,7 +18,7 @@ const TriageQueue = ({ encounters, selectedEncounterId, onSelectEncounter }) => 
             No active patients in queue
           </div>
         ) : (
-          encounters.map(encounter => {
+          [...encounters].sort((a, b) => new Date(b.created_at || b.timestamp || 0) - new Date(a.created_at || a.timestamp || 0)).map(encounter => {
             const isEmergency = encounter.triage_level?.toUpperCase() === 'EMERGENCY';
             const isSelected = selectedEncounterId === encounter.session_id;
             
@@ -47,7 +47,7 @@ const TriageQueue = ({ encounters, selectedEncounterId, onSelectEncounter }) => 
                 <div className="text-xs text-slate-400 flex flex-col gap-1">
                   <div className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    {new Date(encounter.created_at || Date.now()).toLocaleTimeString()}
+                    {encounter.created_at || encounter.timestamp ? new Date(encounter.created_at || encounter.timestamp).toLocaleTimeString() : 'Unknown time'}
                   </div>
                   {encounter.socrates_site && (
                     <div className="truncate">

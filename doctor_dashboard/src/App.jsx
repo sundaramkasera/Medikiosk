@@ -23,9 +23,10 @@ function App() {
       const res = await fetch('http://localhost:8000/api/encounters');
       if (res.ok) {
         const data = await res.json();
-        setEncounters(data);
-        if (data.length > 0) {
-          setSelectedEncounterId(prev => prev || data[0].session_id);
+        const reversedData = data.reverse(); // Newest sessions at index 0
+        setEncounters(reversedData);
+        if (reversedData.length > 0) {
+          setSelectedEncounterId(prev => prev || reversedData[0].session_id);
         }
       }
     } catch (err) {
@@ -35,22 +36,26 @@ function App() {
 
   useEffect(() => {
     fetchEncounters();
-    
+
     // Connect Socket.IO
     socket.connect();
-    
+
     socket.on('connect', () => {
       setIsConnected(true);
       // Join the global doctor_dashboard room
       socket.emit('join_room_event', { room_id: 'doctor_dashboard', role: 'doctor' });
     });
-    
+
     socket.on('disconnect', () => {
       setIsConnected(false);
     });
 
-    socket.on('PATIENT_WAKEUP', () => {
-      fetchEncounters();
+    socket.on('PATIENT_WAKEUP', (envelope) => {
+      if (envelope && envelope.payload) {
+        setEncounters(prev => [envelope.payload, ...prev.filter(p => p.session_id !== envelope.payload.session_id)]);
+      } else {
+        fetchEncounters();
+      }
     });
 
     socket.on('triage_update', () => {
@@ -64,9 +69,9 @@ function App() {
     socket.on('document_processed', async (envelope) => {
       // Document added to an encounter, refetch to get the latest array
       await fetchEncounters();
-      
+
       const eventSessionId = envelope?.session_id || (envelope?.payload && envelope.payload.session_id);
-      
+
       // If data.session_id matches the currently selectedEncounter.session_id, re-fetch the specific encounter details
       if (eventSessionId && eventSessionId === selectedEncounterId) {
         try {
@@ -74,7 +79,7 @@ function App() {
           if (res.ok) {
             const updatedEncounter = await res.json();
             // Update the specific encounter in the list so computed selectedEncounter updates immediately
-            setEncounters(prev => prev.map(enc => 
+            setEncounters(prev => prev.map(enc =>
               enc.session_id === eventSessionId ? updatedEncounter : enc
             ));
           }
@@ -115,21 +120,21 @@ function App() {
 
   return (
     <div className="flex h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
-      <TriageQueue 
-        encounters={encounters} 
+      <TriageQueue
+        encounters={encounters}
         selectedEncounterId={selectedEncounterId}
-        onSelectEncounter={setSelectedEncounterId} 
+        onSelectEncounter={setSelectedEncounterId}
       />
-      
-      <ClinicalSummary 
-        encounter={selectedEncounter} 
-        onFinalize={handleFinalize} 
+
+      <ClinicalSummary
+        encounter={selectedEncounter}
+        onFinalize={handleFinalize}
       />
-      
-      <DocumentTimeline 
-        encounter={selectedEncounter} 
+
+      <DocumentTimeline
+        encounter={selectedEncounter}
       />
-      
+
       {/* Connection Status indicator */}
       {!isConnected && (
         <div className="fixed bottom-4 left-4 bg-red-100 text-red-800 text-xs px-3 py-1 rounded-full border border-red-200 shadow-sm z-50">

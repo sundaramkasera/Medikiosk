@@ -14,12 +14,29 @@ export function useAudioIO(socket, roomId, status) {
     const streamRef = useRef(null);
     const isRecordingRef = useRef(false);
 
-    // VAD Configuration
-    const VOLUME_THRESHOLD = 40; // out of 255
+    // Refs for stale closure prevention in persistent event loops
+    const statusRef = useRef(status);
+    const isPlayingRef = useRef(isPlaying);
+    const depsRef = useRef({ socket, roomId });
+
+    useEffect(() => {
+        statusRef.current = status;
+    }, [status]);
+
+    useEffect(() => {
+        isPlayingRef.current = isPlaying;
+    }, [isPlaying]);
+
+    useEffect(() => {
+        depsRef.current = { socket, roomId };
+    }, [socket, roomId]);
+
+    // 1. Increase VAD Sensitivity
+    const VOLUME_THRESHOLD = 10; // Reduced from 40 for much higher sensitivity to quieter speech
     const SILENCE_DEBOUNCE_MS = 1500; // 1.5 seconds of silence before stopping
 
     const processAudioFrame = () => {
-        if (!analyser.current || isPlaying) {
+        if (!analyser.current || isPlayingRef.current) {
             rafId.current = requestAnimationFrame(processAudioFrame);
             return;
         }
@@ -36,7 +53,7 @@ export function useAudioIO(socket, roomId, status) {
         if (average > VOLUME_THRESHOLD) {
             // Patient is speaking
             silenceStart.current = null;
-            if (!isRecordingRef.current) {
+            if (!isRecordingRef.current && statusRef.current === 'ACTIVE') {
                 // Start a new chunk recording
                 startChunk();
             }
@@ -82,7 +99,9 @@ export function useAudioIO(socket, roomId, status) {
             audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
             analyser.current = audioContext.current.createAnalyser();
             analyser.current.fftSize = 512;
-            analyser.current.smoothingTimeConstant = 0.8;
+            
+            // 2. Reduce Onset Delay
+            analyser.current.smoothingTimeConstant = 0.1; // Reduced from 0.8 for instant reaction
             
             microphone.current = audioContext.current.createMediaStreamSource(stream);
             microphone.current.connect(analyser.current);
@@ -101,6 +120,7 @@ export function useAudioIO(socket, roomId, status) {
                 reader.readAsDataURL(audioBlob);
                 reader.onloadend = () => {
                     const base64data = reader.result.split(',')[1];
+                    const { socket, roomId } = depsRef.current;
                     if (socket && roomId) {
                         socket.emit('PATIENT_SPEECH_AUDIO', {
                             room_id: roomId,
@@ -117,8 +137,10 @@ export function useAudioIO(socket, roomId, status) {
         }
     };
 
+    // 3. Persistent MediaStream
     useEffect(() => {
-        if (status === 'ACTIVE' && !streamRef.current) {
+        // Initialize once and keep open
+        if (!streamRef.current) {
             initVAD();
         }
         
@@ -135,6 +157,14 @@ export function useAudioIO(socket, roomId, status) {
                 audioContext.current.close();
             }
         };
+        // Empty dependency array ensures stream is not destroyed on status change
+    }, []);
+
+    // Stop recording immediately if status becomes inactive
+    useEffect(() => {
+        if (status !== 'ACTIVE' && isRecordingRef.current) {
+            stopChunk();
+        }
     }, [status]);
 
     const playAudioBuffer = async (base64Data) => {

@@ -47,7 +47,7 @@ async def handle_join(sid, data):
     role = data.get('role', 'unknown')
     
     if room_id:
-        sio.enter_room(sid, room_id)
+        await sio.enter_room(sid, room_id)
         logger.info(f"Socket {sid} ({role}) officially entered Socket.IO room: {room_id}")
         await sio.emit('system_alert', {'message': f'Joined room {room_id}'}, to=sid)
 
@@ -69,7 +69,7 @@ async def catch_all(event, sid, data):
         
         # --- FOOLPROOF ROOM JOIN ---
         if room_id:
-            sio.enter_room(sid, room_id)
+            await sio.enter_room(sid, room_id)
             logger.info(f"✅ Forced client {sid} into room {room_id} during WAKEUP")
         # ---------------------------
         session_id = data.get('session_id', room_id.replace('session_', '') if room_id else '')
@@ -113,15 +113,30 @@ async def catch_all(event, sid, data):
             # Save patient transcript to db
             await append_to_transcript(session_id, "user", transcript)
             
-            # LangGraph
-            initial_state = {
-                "session_id": session_id,
-                "patient_language": "hi",
-                "dialogue_history": [],
-                "triage_level": "NORMAL",
-                "current_input": transcript
-            }
-            result = await interview_graph.ainvoke(initial_state)
+            # LangGraph checkpointer setup
+            config = {"configurable": {"thread_id": session_id}}
+            
+            current_state_wrapper = await interview_graph.aget_state(config)
+            if not current_state_wrapper.values:
+                # First time initialization
+                input_state = {
+                    "session_id": session_id,
+                    "patient_language": "hi",
+                    "dialogue_history": [],
+                    "triage_level": "NORMAL",
+                    "current_input": transcript,
+                    "socrates_site": None,
+                    "socrates_onset": None,
+                    "socrates_character": None,
+                    "socrates_severity": None,
+                    "is_complete": False
+                }
+            else:
+                input_state = {
+                    "current_input": transcript
+                }
+                
+            result = await interview_graph.ainvoke(input_state, config)
             
             # Persist incrementally
             await update_encounter_socrates(session_id, result)

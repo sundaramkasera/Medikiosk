@@ -39,7 +39,7 @@ async def run_emergency_summarizer(session_id: str):
         socrates_severity: str = Field(description="The identified severity of pain in English, or 'Unknown'", default="Unknown")
 
     llm = ChatOpenAI(
-        api_key=os.getenv("GROQ_API_KEY"),
+        api_key=os.environ.get("GROQ_API_KEY"),
         base_url="https://api.groq.com/openai/v1",
         model="openai/gpt-oss-120b",
         temperature=0
@@ -63,85 +63,116 @@ async def run_emergency_summarizer(session_id: str):
     except Exception as e:
         logger.error(f"Failed to summarize emergency for {session_id}: {e}")
 
-class InterviewGraph:
-    def __init__(self):
-        logger.info("Initialized Groq-powered SOCRATES State Machine (Native Hindi)")
+from typing import TypedDict, Annotated, Optional
+import operator
+from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.memory import MemorySaver
 
-    async def ainvoke(self, state: dict) -> dict:
-        from langchain_openai import ChatOpenAI
-        from langchain_core.prompts import ChatPromptTemplate
-        from langchain_core.output_parsers import JsonOutputParser
-        from pydantic import BaseModel, Field
+class InterviewState(TypedDict, total=False):
+    session_id: str
+    patient_language: str
+    dialogue_history: list
+    triage_level: str
+    current_input: str
+    socrates_site: Optional[str]
+    socrates_onset: Optional[str]
+    socrates_character: Optional[str]
+    socrates_severity: Optional[str]
+    next_question_translated: str
+    is_complete: bool
 
-        load_dotenv(dotenv_path="backend/.env")
+async def interview_node(state: InterviewState):
+    from langchain_openai import ChatOpenAI
+    from langchain_core.prompts import ChatPromptTemplate
+    from langchain_core.output_parsers import JsonOutputParser
+    from pydantic import BaseModel, Field
 
-        class NextQuestionOutput(BaseModel):
-            next_question_translated: str = Field(description="The next question to ask the patient, in clear empathetic Hindi")
-            triage_level: str = Field(description="Either 'NORMAL' or 'EMERGENCY'")
-            socrates_site: str = Field(description="The identified site of pain in English, or null")
-            socrates_onset: str = Field(description="The identified onset of pain in English, or null")
-            socrates_character: str = Field(description="The identified character of pain in English, or null")
-            socrates_severity: str = Field(description="The identified severity of pain (e.g. 9/10) in English, or null")
+    load_dotenv(dotenv_path="backend/.env")
 
-        llm = ChatOpenAI(
-            api_key=os.getenv("GROQ_API_KEY"),
-            base_url="https://api.groq.com/openai/v1",
-            model="openai/gpt-oss-120b",
-            temperature=0.3
-        )
+    class NextQuestionOutput(BaseModel):
+        next_question_translated: str = Field(description="The next question to ask the patient, in clear empathetic Hindi. If all SOCRATES data is collected, say a brief thank you and indicate completion.")
+        triage_level: str = Field(description="Either 'NORMAL' or 'EMERGENCY'")
+        socrates_site: str = Field(description="The identified site of pain in English, or null")
+        socrates_onset: str = Field(description="The identified onset of pain in English, or null")
+        socrates_character: str = Field(description="The identified character of pain in English, or null")
+        socrates_severity: str = Field(description="The identified severity of pain (e.g. 9/10) in English, or null")
+        is_complete: bool = Field(description="Set to true ONLY if site, onset, character, and severity are all known.")
+
+    llm = ChatOpenAI(
+        api_key=os.environ.get("GROQ_API_KEY"),
+        base_url="https://api.groq.com/openai/v1",
+        model="openai/gpt-oss-120b",
+        temperature=0.3
+    )
+    
+    parser = JsonOutputParser(pydantic_object=NextQuestionOutput)
+    
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "You are a clinical intake assistant. The patient is speaking Hindi. Evaluate their symptoms against the SOCRATES framework. Based on the missing data, ask the next logical follow-up question in clear, empathetic Hindi. If emergency red flags appear (e.g., severe chest pain), output triage_level: EMERGENCY.\n{format_instructions}\nCurrent state:\nTriage: {triage_level}\nSite: {socrates_site}\nOnset: {socrates_onset}\nCharacter: {socrates_character}\nSeverity: {socrates_severity}\nIf all 4 SOCRATES elements are gathered, set is_complete to true."),
+        ("user", "Patient said: {current_input}\nDialogue History:\n{dialogue_history}")
+    ])
+
+    chain = prompt | llm | parser
+
+    logger.info("Executing Groq LLM Node for Question Generation (Native Hindi)")
+    
+    try:
+        result = await chain.ainvoke({
+            "format_instructions": parser.get_format_instructions(),
+            "triage_level": state.get("triage_level", "NORMAL"),
+            "socrates_site": state.get("socrates_site"),
+            "socrates_onset": state.get("socrates_onset"),
+            "socrates_character": state.get("socrates_character"),
+            "socrates_severity": state.get("socrates_severity"),
+            "current_input": state.get("current_input", ""),
+            "dialogue_history": "\n".join(state.get("dialogue_history", []))
+        })
         
-        parser = JsonOutputParser(pydantic_object=NextQuestionOutput)
+        # Accumulate state updates
+        update_state = {}
+        update_state["triage_level"] = result.get("triage_level", "NORMAL")
         
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a clinical intake assistant. The patient is speaking Hindi. Evaluate their symptoms against the SOCRATES framework. Based on the missing data, ask the next logical follow-up question in clear, empathetic Hindi. If emergency red flags appear (e.g., severe chest pain), output triage_level: EMERGENCY.\n{format_instructions}\nCurrent state:\nTriage: {triage_level}\nSite: {socrates_site}\nOnset: {socrates_onset}\nCharacter: {socrates_character}\nSeverity: {socrates_severity}"),
-            ("user", "Patient said: {current_input}\nDialogue History:\n{dialogue_history}")
-        ])
-
-        chain = prompt | llm | parser
-
-        logger.info("Executing Groq LLM Node for Question Generation (Native Hindi)")
+        # Only update if the LLM extracted something new
+        if result.get("socrates_site"): update_state["socrates_site"] = result.get("socrates_site")
+        if result.get("socrates_onset"): update_state["socrates_onset"] = result.get("socrates_onset")
+        if result.get("socrates_character"): update_state["socrates_character"] = result.get("socrates_character")
+        if result.get("socrates_severity"): update_state["socrates_severity"] = result.get("socrates_severity")
         
-        try:
-            result = await chain.ainvoke({
-                "format_instructions": parser.get_format_instructions(),
-                "triage_level": state.get("triage_level", "NORMAL"),
-                "socrates_site": state.get("socrates_site"),
-                "socrates_onset": state.get("socrates_onset"),
-                "socrates_character": state.get("socrates_character"),
-                "socrates_severity": state.get("socrates_severity"),
-                "current_input": state.get("current_input", ""),
-                "dialogue_history": "\n".join(state.get("dialogue_history", []))
-            })
-            
-            # Update state with new values
-            state["triage_level"] = result.get("triage_level", "NORMAL")
-            
-            # Only update if the LLM extracted something new
-            if result.get("socrates_site"): state["socrates_site"] = result.get("socrates_site")
-            if result.get("socrates_onset"): state["socrates_onset"] = result.get("socrates_onset")
-            if result.get("socrates_character"): state["socrates_character"] = result.get("socrates_character")
-            if result.get("socrates_severity"): state["socrates_severity"] = result.get("socrates_severity")
-            
-            translated_q = result.get("next_question_translated", "क्षमा करें, क्या आप फिर से कह सकते हैं?")
-            
-            if state["triage_level"] == "EMERGENCY":
-                logger.warning(f"🚨 EMERGENCY TRIAGE TRIGGERED for session {state.get('session_id')}")
-            
-            # Direct Input/Output wire-up: Map directly back so frontend receives it
-            state["next_question_translated"] = translated_q
-            state["dialogue_history"] = state.get("dialogue_history", []) + [
+        translated_q = result.get("next_question_translated", "क्षमा करें, क्या आप फिर से कह सकते हैं?")
+        update_state["next_question_translated"] = translated_q
+        
+        if update_state["triage_level"] == "EMERGENCY":
+            logger.warning(f"🚨 EMERGENCY TRIAGE TRIGGERED for session {state.get('session_id')}")
+        
+        update_state["dialogue_history"] = state.get("dialogue_history", []) + [
+            f"Patient: {state.get('current_input', '')}", 
+            f"AI: {translated_q}"
+        ]
+        
+        update_state["is_complete"] = result.get("is_complete", False)
+
+        return update_state
+        
+    except Exception as e:
+        logger.error(f"Error in LLM invocation: {e}")
+        return {
+            "next_question_translated": "मुझे क्षमा करें, कुछ तकनीकी समस्या आ रही है।",
+            "dialogue_history": state.get("dialogue_history", []) + [
                 f"Patient: {state.get('current_input', '')}", 
-                f"AI: {translated_q}"
-            ]
-            
-        except Exception as e:
-            logger.error(f"Error in LLM invocation: {e}")
-            state["next_question_translated"] = "मुझे क्षमा करें, कुछ तकनीकी समस्या आ रही है।"
-            state["dialogue_history"] = state.get("dialogue_history", []) + [
-                f"Patient: {state.get('current_input', '')}", 
-                f"AI: {state['next_question_translated']}"
-            ]
+                f"AI: मुझे क्षमा करें, कुछ तकनीकी समस्या आ रही है।"
+            ],
+            "is_complete": False
+        }
 
-        return state
+def should_continue(state: InterviewState):
+    if state.get("is_complete") or state.get("triage_level") == "EMERGENCY":
+        return END
+    return END
 
-interview_graph = InterviewGraph()
+workflow = StateGraph(InterviewState)
+workflow.add_node("interview", interview_node)
+workflow.set_entry_point("interview")
+workflow.add_conditional_edges("interview", should_continue)
+
+memory = MemorySaver()
+interview_graph = workflow.compile(checkpointer=memory)
