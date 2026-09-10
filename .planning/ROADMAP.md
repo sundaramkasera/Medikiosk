@@ -25,3 +25,9 @@ Assemble the UI for patients and physicians.
 - **TK-08**: Doctor Dashboard: Clinical Summary workspace (Markdown editable, Allopathic vs AYUSH toggles).
 - **TK-09**: Doctor Dashboard: Document Intelligence timeline column (chronological OCR results, abnormal badges).
 - **TK-11**: Patient-Facing Kiosk UI in React according to the 5 states defined in Section 4.2. Listens to WebSocket events to transition between Idle, Adaptive Interview, and QR Handoff states.
+
+## Phase 6: Enterprise Document Intelligence Upgrade (Cloud Vision)
+Transition the local edge-OCR pipeline to an enterprise-grade cloud architecture to handle complex cursive handwriting and tabular lab reports for deployment readiness. 
+- **TK-12**: GCP Configuration. Set up a Google Cloud Project, enable the Cloud Vision API, generate a Service Account JSON key, and place it securely in the `backend/` directory (adding it to `.gitignore`).
+- **TK-13**: Dependency & Environment Update. Install the `google-cloud-vision` Python SDK. Update the backend `.env` file to include `GOOGLE_APPLICATION_CREDENTIALS`.
+- **TK-14**: Refactor `ocr_pipeline.py`. Rip out the local EasyOCR implementation. Implement a new function utilizing `vision.ImageAnnotatorClient().document_text_detection()`. Ensure the extracted dense text block is seamlessly passed into the existing `gpt-oss-120b` structuring chain for the Doctor Dashboard.

@@ -15,3 +15,4 @@ motor==3.4.0
 langgraph
 langchain-core
 langchain-openai
+google-cloud-vision

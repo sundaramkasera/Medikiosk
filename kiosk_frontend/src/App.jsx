@@ -178,7 +178,7 @@ function App() {
                         <div className="flex flex-col items-center justify-start gap-3">
                             <div className="bg-white p-2 rounded-lg">
                                 <QRCodeSVG
-                                    value={`https://flat-brooms-worry.loca.lt/mobile/${roomId.replace('session_', '')}`}
+                                    value={`https://tall-rooms-camp.loca.lt/mobile/${roomId.replace('session_', '')}`}
                                     size={128}
                                     level={"H"}
                                 />

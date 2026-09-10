@@ -3,3 +3,6 @@ node_modules/
 .env
 uploads/
 __pycache__/
+# GCP Credentials
+*.json
+backend/gcp-vision-key.json

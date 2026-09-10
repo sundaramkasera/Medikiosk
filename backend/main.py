@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 import os
 from fastapi.staticfiles import StaticFiles
 
+# Explicitly load the backend environment variables
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup

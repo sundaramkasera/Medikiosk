@@ -42,6 +42,25 @@ def run_easyocr(file_paths: List[str]) -> str:
             logger.error(f"Error OCRing {path}: {e}")
     return full_text
 
+def run_google_vision(file_paths: List[str]) -> str:
+    from google.cloud import vision
+    import io
+    client = vision.ImageAnnotatorClient()
+    full_text = ""
+    for path in file_paths:
+        with io.open(path, 'rb') as image_file:
+            content = image_file.read()
+        image = vision.Image(content=content)
+        response = client.document_text_detection(image=image)
+        if response.error.message:
+            raise Exception(f"Vision API error: {response.error.message}")
+        if response.full_text_annotation:
+            page_text = response.full_text_annotation.text
+            if full_text:
+                full_text += "\n--- NEW IMAGE BLOCK ---\n"
+            full_text += page_text
+    return full_text
+
 # Define a strict output schema for Langchain
 class OCRLLMOutput(BaseModel):
     document_type: str = Field(description="Type of document, e.g., 'prescription', 'lab_report', 'discharge_summary', 'unknown'")
@@ -56,7 +75,13 @@ async def process_documents(session_id: str, file_paths: List[str]):
         logger.info(f"[{session_id}] Starting background OCR process for {len(file_paths)} images.")
         
         # 1. OCR Extraction (CPU bound, run in thread pool to not block asyncio loop)
-        raw_text = await asyncio.to_thread(run_easyocr, file_paths)
+        try:
+            logger.info(f"[{session_id}] Attempting Google Cloud Vision OCR.")
+            raw_text = await asyncio.to_thread(run_google_vision, file_paths)
+        except Exception as e:
+            logger.warning(f"[{session_id}] Google Cloud Vision failed ({e}), falling back to EasyOCR.")
+            raw_text = await asyncio.to_thread(run_easyocr, file_paths)
+            
         logger.info(f"[{session_id}] OCR complete. Extracted {len(raw_text)} chars.")
         
         if not raw_text.strip():
