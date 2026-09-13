@@ -24,7 +24,7 @@ const DocumentTimeline = ({ encounter }) => {
         </h3>
         <p className="text-sm text-slate-400 mt-1">{docs.length} uploaded document(s)</p>
       </div>
-      
+
       <div className="flex-1 p-6">
         {docs.length === 0 ? (
           <div className="text-center text-slate-500 mt-10 text-sm">
@@ -34,7 +34,7 @@ const DocumentTimeline = ({ encounter }) => {
           <div className="relative">
             {/* Timeline line */}
             <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-slate-800"></div>
-            
+
             <div className="space-y-6 relative">
               {docs.map((doc, index) => {
                 const needsReview = doc.requires_manual_review;
@@ -42,7 +42,7 @@ const DocumentTimeline = ({ encounter }) => {
                   <div key={doc.document_id || index} className="relative pl-10">
                     {/* Timeline Node */}
                     <div className={`absolute left-2.5 -ml-1 top-1 w-3.5 h-3.5 rounded-full border-2 border-slate-900 shadow-sm ${needsReview ? 'bg-red-500' : 'bg-indigo-500'}`}></div>
-                    
+
                     <div className={`p-4 rounded-lg border shadow-sm ${needsReview ? 'bg-red-900/10 border-red-900/50' : 'bg-slate-800/50 border-slate-700'}`}>
                       <div className="flex justify-between items-start mb-2 gap-2">
                         <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
@@ -84,7 +84,7 @@ const DocumentTimeline = ({ encounter }) => {
                           }
                         })()}
                       </div>
-                      
+
                       {/* Hidden full text that expands on hover */}
                       <details className="text-xs text-slate-400 group">
                         <summary className="cursor-pointer font-medium text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
@@ -95,9 +95,9 @@ const DocumentTimeline = ({ encounter }) => {
                           {doc.raw_text || "No raw text available."}
                         </div>
                       </details>
-                      
+
                       {doc.image_urls && doc.image_urls.length > 0 && (
-                        <button 
+                        <button
                           onClick={() => setPreviewImages(doc.image_urls)}
                           className="mt-3 flex items-center gap-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 py-1.5 px-3 rounded border border-slate-700 transition-colors"
                         >
@@ -118,7 +118,7 @@ const DocumentTimeline = ({ encounter }) => {
       {previewImages && (
         <div className="fixed inset-0 z-50 bg-slate-950/90 flex flex-col items-center justify-start p-8 overflow-y-auto">
           <div className="w-full max-w-4xl flex justify-end mb-4">
-            <button 
+            <button
               onClick={() => setPreviewImages(null)}
               className="bg-slate-800 hover:bg-slate-700 text-slate-200 p-2 rounded-full transition-colors flex items-center gap-2"
             >
@@ -126,13 +126,13 @@ const DocumentTimeline = ({ encounter }) => {
               <span className="text-sm font-medium pr-1">Close</span>
             </button>
           </div>
-          
+
           <div className="w-full max-w-4xl space-y-6 flex flex-col items-center pb-20">
             {previewImages.map((url, idx) => (
               <div key={idx} className="bg-slate-900 border border-slate-800 p-2 rounded-lg shadow-2xl">
-                <img 
-                  src={`http://localhost:8000${url}`} 
-                  alt={`Original Scan ${idx + 1}`} 
+                <img
+                  src={`https://dec-importance-broker-anytime.trycloudflare.com${url}`}
+                  alt={`Original Scan ${idx + 1}`}
                   className="max-w-full h-auto rounded"
                 />
               </div>

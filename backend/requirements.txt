@@ -11,8 +11,8 @@ pydantic==2.7.1
 python-multipart==0.0.9
 requests==2.32.3
 motor==3.4.0
-
 langgraph
 langchain-core
 langchain-openai
 google-cloud-vision
+httpx==0.27.2

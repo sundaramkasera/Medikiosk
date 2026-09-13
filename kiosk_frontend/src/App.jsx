@@ -7,7 +7,7 @@ import { useGestureCursor } from './hooks/useGestureCursor';
 import { useAudioIO } from './hooks/useAudioIO';
 import './App.css';
 
-const socket = io('http://localhost:8000', { transports: ['websocket', 'polling'] });
+const socket = io('https://dec-importance-broker-anytime.trycloudflare.com', { transports: ['websocket', 'polling'] });
 
 function App() {
     const [status, setStatus] = useState('IDLE');
@@ -178,7 +178,7 @@ function App() {
                         <div className="flex flex-col items-center justify-start gap-3">
                             <div className="bg-white p-2 rounded-lg">
                                 <QRCodeSVG
-                                    value={`https://tall-rooms-camp.loca.lt/mobile/${roomId.replace('session_', '')}`}
+                                    value={`https://dec-importance-broker-anytime.trycloudflare.com/mobile/${roomId.replace('session_', '')}`}
                                     size={128}
                                     level={"H"}
                                 />

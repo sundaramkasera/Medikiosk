@@ -5,7 +5,7 @@ import ClinicalSummary from './components/ClinicalSummary';
 import DocumentTimeline from './components/DocumentTimeline';
 
 // Assuming backend runs on 8000
-const socket = io('http://localhost:8000', {
+const socket = io('https://dec-importance-broker-anytime.trycloudflare.com', {
   autoConnect: false,
 });
 
@@ -20,7 +20,7 @@ function App() {
   // Fetch initial data
   const fetchEncounters = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/encounters');
+      const res = await fetch('https://dec-importance-broker-anytime.trycloudflare.com/api/encounters');
       if (res.ok) {
         const data = await res.json();
         const reversedData = data.reverse(); // Newest sessions at index 0
@@ -75,7 +75,7 @@ function App() {
       // If data.session_id matches the currently selectedEncounter.session_id, re-fetch the specific encounter details
       if (eventSessionId && eventSessionId === selectedEncounterId) {
         try {
-          const res = await fetch(`http://localhost:8000/api/encounters/${eventSessionId}`);
+          const res = await fetch(`https://dec-importance-broker-anytime.trycloudflare.com/api/encounters/${eventSessionId}`);
           if (res.ok) {
             const updatedEncounter = await res.json();
             // Update the specific encounter in the list so computed selectedEncounter updates immediately
@@ -102,7 +102,7 @@ function App() {
 
   const handleFinalize = async (session_id, summary_text) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/encounters/${session_id}/finalize`, {
+      const res = await fetch(`https://dec-importance-broker-anytime.trycloudflare.com/api/encounters/${session_id}/finalize`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ summary_text })
